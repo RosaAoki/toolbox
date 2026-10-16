@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>記録庫 — Claude チャットビューワー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --paper:#FAF6EF;
+    --paper-dim:#F1EBDD;
+    --ink:#2B2620;
+    --ink-soft:#5A5347;
+    --faded:#8C8270;
+    --moss:#5C6B4F;
+    --moss-dim:#7C8A6E;
+    --amber:#C98A3E;
+    --amber-soft:#E8C99A;
+    --line:#D9D2C4;
+    --line-strong:#C7BCA6;
+    --human-bg:#EFE9D8;
+    --assistant-bg:#F7F3E9;
+    --shadow: 0 1px 0 rgba(43,38,32,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    overflow:hidden;
+  }
+  ::selection{background:var(--amber-soft);}
+
+  /* ---------- Loading / empty state ---------- */
+  #dropzone{
+    position:fixed; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 18% 20%, rgba(92,107,79,0.06), transparent 40%),
+      radial-gradient(circle at 82% 78%, rgba(201,138,62,0.07), transparent 45%),
+      var(--paper);
+    z-index:50;
+    transition:opacity .3s ease;
+  }
+  #dropzone.hidden{opacity:0; pointer-events:none;}
+  .intake{
+    width:min(620px, 92vw);
+    text-align:center;
+  }
+  .intake .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--moss);
+    margin-bottom:18px;
+  }
+  .intake h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:clamp(32px,5vw,46px);
+    line-height:1.08;
+    margin:0 0 14px;
+    letter-spacing:-0.01em;
+  }
+  .intake h1 em{
+    font-style:italic;
+    color:var(--moss);
+  }
+  .intake p.sub{
+    color:var(--ink-soft);
+    font-size:15px;
+    line-height:1.6;
+    margin:0 auto 36px;
+    max-width:440px;
+  }
+  .dropcard{
+    border:1.5px dashed var(--line-strong);
+    border-radius:4px;
+    padding:40px 28px;
+    background:rgba(255,255,255,0.35);
+    cursor:pointer;
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .dropcard:hover, .dropcard.drag{
+    border-color:var(--moss);
+    background:rgba(92,107,79,0.05);
+  }
+  .dropcard .icon{
+    font-family:'Fraunces', serif;
+    font-size:34px;
+    color:var(--moss);
+    margin-bottom:10px;
+  }
+  .dropcard .label{
+    font-size:14.5px;
+    font-weight:600;
+    margin-bottom:4px;
+  }
+  .dropcard .hint{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11.5px;
+    color:var(--faded);
+  }
+  #fileInput{display:none;}
+  .intake .formats{
+    margin-top:18px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--faded);
+    letter-spacing:.02em;
+  }
+  .progress-wrap{
+    margin-top:28px;
+    height:3px;
+    background:var(--line);
+    border-radius:2px;
+    overflow:hidden;
+    display:none;
+  }
+  .progress-wrap.show{display:block;}
+  .progress-bar{
+    height:100%;
+    width:0%;
+    background:var(--moss);
+    transition:width .2s ease;
+  }
+  .progress-text{
+    margin-top:10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--faded);
+  }
+  .error-msg{
+    margin-top:18px;
+    font-size:13px;
+    color:#A4452C;
+    display:none;
+  }
+
+  /* ---------- Main app ---------- */
+  #app{
+    display:none;
+    height:100vh;
+    grid-template-columns: 360px 1fr;
+  }
+  #app.show{display:grid;}
+
+  /* Left rail: index */
+  #rail{
+    border-right:1px solid var(--line);
+    background:var(--paper-dim);
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+  .rail-head{
+    padding:20px 20px 14px;
+    border-bottom:1px solid var(--line);
+  }
+  .rail-title{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:19px;
+    letter-spacing:-0.01em;
+    margin:0 0 2px;
+  }
+  .rail-stats{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--faded);
+    letter-spacing:.03em;
+  }
+  .search-box{
+    margin:14px 0 0;
+    position:relative;
+  }
+  .search-box input{
+    width:100%;
+    padding:9px 12px 9px 30px;
+    border:1px solid var(--line-strong);
+    border-radius:3px;
+    background:#fff;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--ink);
+    outline:none;
+  }
+  .search-box input:focus{border-color:var(--moss);}
+  .search-box .icon{
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    font-size:12px; color:var(--faded);
+  }
+  .deep-toggle{
+    display:flex; align-items:center; gap:6px;
+    margin-top:9px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--faded);
+    cursor:pointer;
+    user-select:none;
+  }
+  .deep-toggle input{accent-color:var(--moss);}
+  .sort-row{
+    display:flex; gap:6px; margin-top:10px;
+  }
+  .sort-btn{
+    flex:1;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    padding:6px 4px;
+    border:1px solid var(--line-strong);
+    background:#fff;
+    color:var(--ink-soft);
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .sort-btn.active{
+    background:var(--moss);
+    border-color:var(--moss);
+    color:#fff;
+  }
+
+  /* virtualized list */
+  #listViewport{
+    flex:1;
+    overflow-y:auto;
+    position:relative;
+  }
+  #listSpacer{position:relative; width:100%;}
+  .row{
+    position:absolute; left:0; right:0;
+    padding:11px 20px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+  .row:hover{background:rgba(92,107,79,0.06);}
+  .row.active{
+    background:#fff;
+    border-left:3px solid var(--amber);
+    padding-left:17px;
+    box-shadow:var(--shadow);
+  }
+  .row .name{
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .row .meta{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10px;
+    color:var(--faded);
+    display:flex; gap:8px;
+  }
+  .row .snippet{
+    font-size:11.5px;
+    color:var(--ink-soft);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .empty-row{
+    padding:40px 20px;
+    text-align:center;
+    color:var(--faded);
+    font-size:13px;
+  }
+
+  /* Right: transcript pane */
+  #pane{
+    overflow-y:auto;
+    background:var(--paper);
+    position:relative;
+  }
+  .pane-inner{
+    max-width:760px;
+    margin:0 auto;
+    padding:48px 40px 120px;
+  }
+  .pane-empty{
+    height:100%;
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+    color:var(--faded);
+    text-align:center;
+  }
+  .pane-empty .icon{font-family:'Fraunces',serif; font-size:40px; color:var(--line-strong); margin-bottom:12px;}
+  .pane-empty p{font-size:13px; max-width:280px; line-height:1.6;}
+
+  .transcript-head{
+    margin-bottom:36px;
+    padding-bottom:20px;
+    border-bottom:1px solid var(--line);
+  }
+  .transcript-head .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--moss);
+    margin-bottom:10px;
+  }
+  .transcript-head h2{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:28px;
+    line-height:1.15;
+    margin:0 0 10px;
+    letter-spacing:-0.01em;
+  }
+  .transcript-head .dates{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    color:var(--faded);
+  }
+
+  .msg{
+    margin-bottom:28px;
+    display:grid;
+    grid-template-columns:80px 1fr;
+    gap:18px;
+  }
+  .msg .who{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--faded);
+    padding-top:3px;
+  }
+  .msg.human .who{color:var(--moss);}
+  .msg.assistant .who{color:var(--amber);}
+  .msg .bubble{
+    background:var(--assistant-bg);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:16px 18px;
+    font-size:14.5px;
+    line-height:1.65;
+    white-space:pre-wrap;
+    word-wrap:break-word;
+  }
+  .msg.human .bubble{
+    background:var(--human-bg);
+  }
+  .msg .timestamp{
+    font-family:'JetBrains Mono', monospace;
+    font-size:9.5px;
+    color:var(--faded);
+    margin-top:6px;
+  }
+  .msg .tool-note{
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--faded);
+    font-style:italic;
+    margin-top:8px;
+    padding-top:8px;
+    border-top:1px dashed var(--line);
+  }
+
+  ::-webkit-scrollbar{width:9px; height:9px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong); border-radius:5px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--faded);}
+
+  .reset-link{
+    margin-top:18px;
+    display:inline-block;
+    font-family:'JetBrains Mono', monospace;
+    font-size:10.5px;
+    color:var(--faded);
+    cursor:pointer;
+    text-decoration:underline;
+  }
+
+  @media (max-width: 760px){
+    #app.show{display:flex; flex-direction:column;}
+    #rail{width:100%; height:42vh; border-right:none; border-bottom:1px solid var(--line);}
+    #pane{height:58vh;}
+  }
+</style>
+</head>
+<body>
+
+<div id="dropzone">
+  <div class="intake">
+    <div class="eyebrow">記録庫 — Personal Archive Reader</div>
+    <h1>あなたの対話を、<br><em>手元で</em>静かに読む。</h1>
+    <p class="sub">Claudeからエクスポートした ZIP または JSON ファイルを読み込みます。すべてこのブラウザの中だけで処理され、どこにも送信されません。</p>
+
+    <div class="dropcard" id="dropcard">
+      <div class="icon">⌘</div>
+      <div class="label">ここにファイルをドロップ、またはクリックして選択</div>
+      <div class="hint">.zip / .json — 何年分の履歴でも対応</div>
+    </div>
+    <input type="file" id="fileInput" accept=".zip,.json,application/zip,application/json">
+    <div class="formats">Settings → Privacy → Export data で取得した conversations.json または ZIP に対応</div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="progress-text" id="progressText"></div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div id="rail">
+    <div class="rail-head">
+      <div class="rail-title">記録庫</div>
+      <div class="rail-stats" id="railStats">0 conversations</div>
+      <div class="search-box">
+        <span class="icon">⌕</span>
+        <input type="text" id="searchInput" placeholder="タイトルで検索…">
+      </div>
+      <label class="deep-toggle">
+        <input type="checkbox" id="deepSearch">
+        本文も検索する(時間がかかる場合があります)
+      </label>
+      <div class="sort-row">
+        <button class="sort-btn active" data-sort="updated_desc">新しい順</button>
+        <button class="sort-btn" data-sort="updated_asc">古い順</button>
+        <button class="sort-btn" data-sort="name">名前順</button>
+      </div>
+    </div>
+    <div id="listViewport">
+      <div id="listSpacer"></div>
+    </div>
+  </div>
+  <div id="pane">
+    <div class="pane-empty" id="paneEmpty">
+      <div class="icon">📖</div>
+      <p>左の一覧から会話を選ぶと、ここに全文が表示されます。</p>
+    </div>
+    <div class="pane-inner" id="paneInner" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------------- State ----------------
+  let allConversations = [];   // raw parsed conversations
+  let filtered = [];           // currently visible (filtered + sorted) list
+  let activeId = null;
+  let sortMode = 'updated_desc';
+  let searchTerm = '';
+  let deepSearchOn = false;
+  const ROW_HEIGHT = 64;
+
+  const dropzone = document.getElementById('dropzone');
+  const dropcard = document.getElementById('dropcard');
+  const fileInput = document.getElementById('fileInput');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const errorMsg = document.getElementById('errorMsg');
+  const app = document.getElementById('app');
+  const listViewport = document.getElementById('listViewport');
+  const listSpacer = document.getElementById('listSpacer');
+  const railStats = document.getElementById('railStats');
+  const searchInput = document.getElementById('searchInput');
+  const deepSearchCb = document.getElementById('deepSearch');
+  const paneEmpty = document.getElementById('paneEmpty');
+  const paneInner = document.getElementById('paneInner');
+
+  // ---------------- File intake ----------------
+  dropcard.addEventListener('click', () => fileInput.click());
+  ['dragenter','dragover'].forEach(ev => dropcard.addEventListener(ev, e => {
+    e.preventDefault(); dropcard.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(ev => dropcard.addEventListener(ev, e => {
+    e.preventDefault(); dropcard.classList.remove('drag');
+  }));
+  dropcard.addEventListener('drop', e => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleFile(f);
+  });
+
+  function showProgress(pct, text){
+    progressWrap.classList.add('show');
+    progressBar.style.width = pct + '%';
+    progressText.textContent = text;
+  }
+  function showError(msg){
+    errorMsg.style.display = 'block';
+    errorMsg.textContent = msg;
+    progressWrap.classList.remove('show');
+  }
+
+  async function handleFile(file){
+    errorMsg.style.display = 'none';
+    showProgress(5, 'ファイルを読み込み中…');
+    try{
+      let jsonText = null;
+      const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip';
+      if (isZip){
+        showProgress(15, 'ZIP を展開中…');
+        const zip = await JSZip.loadAsync(file);
+        let target = null;
+        zip.forEach((path, entry) => {
+          if (!target && /conversations.*\.json$/i.test(path)) target = entry;
+        });
+        if (!target){
+          zip.forEach((path, entry) => {
+            if (!target && /\.json$/i.test(path)) target = entry;
+          });
+        }
+        if (!target) throw new Error('ZIP内にJSONファイルが見つかりませんでした。');
+        showProgress(45, '会話データを抽出中…');
+        jsonText = await target.async('string');
+      } else {
+        jsonText = await file.text();
+      }
+      showProgress(70, 'パース中…');
+      // Allow JSON.parse to yield to the UI thread for very large files
+      await new Promise(r => setTimeout(r, 30));
+      const data = JSON.parse(jsonText);
+      showProgress(90, '索引を構築中…');
+      await new Promise(r => setTimeout(r, 30));
+      ingestData(data);
+      showProgress(100, '完了');
+      setTimeout(() => {
+        dropzone.classList.add('hidden');
+        app.classList.add('show');
+      }, 250);
+    } catch(err){
+      console.error(err);
+      showError('読み込みに失敗しました: ' + err.message);
+    }
+  }
+
+  function ingestData(data){
+    let convs = [];
+    if (Array.isArray(data)) {
+      convs = data;
+    } else if (data && Array.isArray(data.conversations)) {
+      convs = data.conversations;
+    } else if (data && data.chat_messages) {
+      convs = [data]; // single conversation object
+    } else {
+      throw new Error('想定しているClaudeのエクスポート形式と異なります。');
+    }
+
+    allConversations = convs.map((c, i) => normalizeConversation(c, i));
+    applyFilterSort();
+  }
+
+  function normalizeConversation(c, idx){
+    const messages = (c.chat_messages || c.messages || []).map(m => normalizeMessage(m));
+    const name = c.name || c.title || (messages[0] ? truncate(extractPlain(messages[0]), 60) : '(無題の会話)');
+    const created = c.created_at || c.created || (messages[0] && messages[0].created_at) || null;
+    const updated = c.updated_at || c.updated || created;
+    // Build a lightweight searchable blob lazily (only on demand for deep search)
+    return {
+      id: c.uuid || c.id || ('conv-' + idx),
+      name,
+      created_at: created,
+      updated_at: updated,
+      messages,
+      _snippet: messages.length ? truncate(extractPlain(messages[0]), 90) : '',
+      _searchBlobCache: null
+    };
+  }
+
+  function normalizeMessage(m){
+    const sender = m.sender || m.role || (m.author && m.author.role) || 'assistant';
+    let text = '';
+    let toolNote = false;
+    if (typeof m.text === 'string' && m.text.trim()){
+      text = m.text;
+    } else if (Array.isArray(m.content)){
+      const parts = [];
+      m.content.forEach(block => {
+        if (typeof block === 'string') parts.push(block);
+        else if (block.type === 'text' && block.text) parts.push(block.text);
+        else if (block.type === 'tool_use') toolNote = true;
+        else if (block.type === 'tool_result') toolNote = true;
+        else if (block.text) parts.push(block.text);
+      });
+      text = parts.join('\n\n');
+      if (!text && toolNote) text = '(ツール実行)';
+    } else if (typeof m.content === 'string'){
+      text = m.content;
+    }
+    return {
+      sender: sender === 'human' || sender === 'user' ? 'human' : 'assistant',
+      text: text || '(空のメッセージ)',
+      created_at: m.created_at || m.created || null,
+      hadTool: toolNote
+    };
+  }
+
+  function extractPlain(m){ return (m && m.text) ? m.text.replace(/\s+/g,' ').trim() : ''; }
+  function truncate(s, n){ return s.length > n ? s.slice(0,n) + '…' : s; }
+
+  function getSearchBlob(c){
+    if (c._searchBlobCache) return c._searchBlobCache;
+    const blob = c.messages.map(m => m.text).join(' ').toLowerCase();
+    c._searchBlobCache = blob;
+    return blob;
+  }
+
+  // ---------------- Filter / sort ----------------
+  function applyFilterSort(){
+    const term = searchTerm.trim().toLowerCase();
+    if (!term){
+      filtered = allConversations.slice();
+    } else if (!deepSearchOn){
+      filtered = allConversations.filter(c => c.name.toLowerCase().includes(term));
+    } else {
+      filtered = allConversations.filter(c =>
+        c.name.toLowerCase().includes(term) || getSearchBlob(c).includes(term)
+      );
+    }
+
+    filtered.sort((a,b) => {
+      if (sortMode === 'name') return a.name.localeCompare(b.name, 'ja');
+      const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      return sortMode === 'updated_asc' ? ta - tb : tb - ta;
+    });
+
+    railStats.textContent = `${filtered.length.toLocaleString()} / ${allConversations.length.toLocaleString()} conversations`;
+    renderList(true);
+  }
+
+  let searchDebounce = null;
+  searchInput.addEventListener('input', e => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      searchTerm = e.target.value;
+      applyFilterSort();
+    }, deepSearchOn ? 350 : 80);
+  });
+  deepSearchCb.addEventListener('change', e => {
+    deepSearchOn = e.target.checked;
+    applyFilterSort();
+  });
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      sortMode = btn.dataset.sort;
+      applyFilterSort();
+    });
+  });
+
+  // ---------------- Virtualized list ----------------
+  function renderList(resetScroll){
+    listSpacer.style.height = (filtered.length * ROW_HEIGHT) + 'px';
+    if (resetScroll) listViewport.scrollTop = 0;
+    paintVisibleRows();
+  }
+
+  function paintVisibleRows(){
+    listSpacer.innerHTML = '';
+    if (filtered.length === 0){
+      const e = document.createElement('div');
+      e.className = 'empty-row';
+      e.textContent = allConversations.length === 0 ? '会話が読み込まれていません。' : '一致する会話が見つかりません。';
+      e.style.position = 'static';
+      listSpacer.appendChild(e);
+      return;
+    }
+    const viewportH = listViewport.clientHeight;
+    const scrollTop = listViewport.scrollTop;
+    const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 4);
+    const endIdx = Math.min(filtered.length, Math.ceil((scrollTop + viewportH) / ROW_HEIGHT) + 4);
+
+    const frag = document.createDocumentFragment();
+    for (let i = startIdx; i < endIdx; i++){
+      const c = filtered[i];
+      const row = document.createElement('div');
+      row.className = 'row' + (c.id === activeId ? ' active' : '');
+      row.style.top = (i * ROW_HEIGHT) + 'px';
+      row.style.height = ROW_HEIGHT + 'px';
+      row.dataset.id = c.id;
+      row.innerHTML = `
+        <div class="name">${escapeHtml(c.name)}</div>
+        <div class="snippet">${escapeHtml(c._snippet)}</div>
+        <div class="meta"><span>${formatDate(c.updated_at)}</span><span>${c.messages.length} msgs</span></div>
+      `;
+      row.addEventListener('click', () => selectConversation(c.id));
+      frag.appendChild(row);
+    }
+    listSpacer.appendChild(frag);
+  }
+
+  let scrollRaf = null;
+  listViewport.addEventListener('scroll', () => {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      paintVisibleRows();
+      scrollRaf = null;
+    });
+  });
+  window.addEventListener('resize', () => paintVisibleRows());
+
+  // ---------------- Transcript pane ----------------
+  function selectConversation(id){
+    activeId = id;
+    const c = allConversations.find(x => x.id === id);
+    if (!c) return;
+    paneEmpty.style.display = 'none';
+    paneInner.style.display = 'block';
+
+    let html = `
+      <div class="transcript-head">
+        <div class="eyebrow">Conversation</div>
+        <h2>${escapeHtml(c.name)}</h2>
+        <div class="dates">${formatDate(c.created_at)} 〜 ${formatDate(c.updated_at)} ・ ${c.messages.length} 件のメッセージ</div>
+      </div>
+    `;
+    c.messages.forEach(m => {
+      html += `
+        <div class="msg ${m.sender}">
+          <div class="who">${m.sender === 'human' ? 'You' : 'Claude'}</div>
+          <div>
+            <div class="bubble">${escapeHtml(m.text)}</div>
+            ${m.created_at ? `<div class="timestamp">${formatDate(m.created_at, true)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    });
+    paneInner.innerHTML = html;
+    document.getElementById('pane').scrollTop = 0;
+    paintVisibleRows(); // refresh active highlight
+  }
+
+  // ---------------- Helpers ----------------
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+  function formatDate(d, withTime){
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return '—';
+    const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    if (withTime){
+      const hh = String(dt.getHours()).padStart(2,'0'), mm = String(dt.getMinutes()).padStart(2,'0');
+      return `${y}-${m}-${day} ${hh}:${mm}`;
+    }
+    return `${y}-${m}-${day}`;
+  }
+
+})();
+</script>
+</body>
+</html>
