@@ -37,7 +37,7 @@ nav.main button[aria-pressed="true"]{background:var(--accent-soft);border-color:
 .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;-webkit-overflow-scrolling:touch}
 .tabs button{white-space:nowrap;border-radius:999px}
 .tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.notice{background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.notice{background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px;position:sticky;top:calc(100px + env(safe-area-inset-top));z-index:4}
 .notice:empty{display:none}
 section.frame{margin-top:14px}
 section.frame h2{font-size:15px;margin:0 0 6px;color:var(--sub);display:flex;justify-content:space-between;align-items:center}
@@ -56,11 +56,12 @@ form.add{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 form.add .row{display:flex;gap:6px}
 form.add input[type="text"]{flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);min-width:0}
 form.add input.memo{font-size:14px}
-.addbar{position:sticky;bottom:0;background:var(--bg);padding:10px 0 calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.addbar{position:fixed;left:50%;transform:translateX(-50%);width:min(440px,100%);bottom:0;background:var(--bg);padding:10px 14px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:15}
+body.has-addbar{padding-bottom:calc(138px + env(safe-area-inset-bottom))}
 .undobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
-body.has-addbar .undobar{bottom:calc(128px + env(safe-area-inset-bottom))}
   width:min(412px,calc(100% - 28px));background:#33302a;color:#fff;border-radius:12px;
   display:none;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;z-index:20;font-size:14px}
+body.has-addbar .undobar{bottom:calc(146px + env(safe-area-inset-bottom))}
 .undobar.show{display:flex}
 .undobar button{background:#fff;color:#26221c;border:none;font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
@@ -126,6 +127,8 @@ const CONFIG = {
   badge: "試作"                           // 見出しのバッジ（本番は "" ）
 };
 const APP_MARK = "kaimono-memo";
+const $app = document.getElementById("app");
+const $notice = document.getElementById("notice");
 const SCHEMA = 1;
 const ANYWHERE = "anywhere";
 const DAY = 86400000;
@@ -160,6 +163,10 @@ function validateData(d){
     if (h.memo !== undefined && h.memo !== null && !isStr(h.memo)) return false;
   }
   for (const k of Object.keys(d.orderMemory)){ const a = d.orderMemory[k]; if (!Array.isArray(a) || !a.every(isStr)) return false; }
+  if (d.meta !== undefined){
+    if (!d.meta || typeof d.meta !== "object" || Array.isArray(d.meta)) return false;
+    if (d.meta.lastExportAt !== undefined && d.meta.lastExportAt !== null && typeof d.meta.lastExportAt !== "number") return false;
+  }
   return true;
 }
 let recoveredFromCorrupt = false;
@@ -193,8 +200,6 @@ if (navigator.storage && navigator.storage.persist){ navigator.storage.persist()
 })();
 
 /* ===== 小物 ===== */
-const $app = document.getElementById("app");
-const $notice = document.getElementById("notice");
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const norm = s => (s||"").trim().replace(/\s+/g," ");
 const esc = s => (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -477,8 +482,9 @@ function renderStaples(){
       const name = norm(prompt("定番の名前", st.name) || "");
       if (!name) return;
       if (data.staples.some(s => s.id !== st.id && s.frame === st.frame && s.name === name)){ notice("その定番はもうあります"); return; }
-      const memo = (prompt("既定のメモ（任意）", st.memo || "") || "").trim();
-      st.name = name; st.memo = memo; save(); render(); notice("定番を編集しました");
+      const memoIn = prompt("既定のメモ（任意）", st.memo || "");
+      if (memoIn === null) return;
+      st.name = name; st.memo = memoIn.trim(); save(); render(); notice("定番を編集しました");
     };
     const del = document.createElement("button"); del.type="button"; del.textContent="消す"; del.className="danger";
     del.onclick = () => { data.staples = data.staples.filter(x => x.id !== st.id); save(); render(); };
@@ -623,7 +629,7 @@ function renderSettings(){
     last = "前回書き出し：" + fmtDate(data.meta.lastExportAt) + '<span class="small">（' + (da === 0 ? "今日" : da + "日前") + "）</span>";
   }
   c1.innerHTML = "<h3>書き出し（バックアップ）</h3><p>" + last + "</p>" +
-    "<p>書き出した JSON は、iPhone の「ファイル」（iCloud Drive）にためておく決まりです。必要なときに、まとめて Muse へ渡してください。</p>";
+    "<p>書き出した JSON は、iCloud Drive の専用フォルダにためておく決まりです。必要なときに、まとめて Muse へ渡してください。</p>";
   const ex = document.createElement("button"); ex.type="button"; ex.className="primary"; ex.textContent="JSONを書き出す";
   ex.onclick = exportJSON;
   c1.appendChild(ex); wrap.appendChild(c1);
@@ -769,6 +775,7 @@ document.querySelectorAll("nav.main button").forEach(b => {
   b.onclick = () => { view = b.dataset.view; syncNav(); render(); };
 });
 function render(){
+  if (view !== "main") document.body.classList.remove("has-addbar");
   if (view === "main" || view === "stores") renderMainOrStores();
   else if (view === "staples") renderStaples();
   else if (view === "history") renderHistory();
@@ -776,6 +783,10 @@ function render(){
 }
 function renderMainOrStores(){ if (view === "stores") renderStores(); else renderMain(); }
 document.title = CONFIG.appName;
+(function(){
+  const m = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (m) m.setAttribute("content", CONFIG.appName.replace(/[（）]/g, ""));
+})();
 (function(){
   const h = document.getElementById("apptitle");
   h.textContent = "買い物メモ";
