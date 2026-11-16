@@ -12,6 +12,7 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
 :root{
+  --kb:0px;
   --accent:#b7791f; --accent-soft:#f7ecd4; --ink:#26221c; --sub:#7a7264;
   --line:#e5ddcb; --bg:#fffdf7; --card:#ffffff; --danger:#b3382e;
 }
@@ -56,13 +57,18 @@ form.add{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 form.add .row{display:flex;gap:6px}
 form.add input[type="text"]{flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);min-width:0}
 form.add input.memo{font-size:14px}
-.addbar{position:fixed;left:50%;transform:translateX(-50%);width:min(440px,100%);bottom:0;background:var(--bg);padding:10px 14px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:15}
+.addbar{position:fixed;left:50%;transform:translateX(-50%);width:min(440px,100%);bottom:var(--kb);background:var(--bg);padding:10px 14px calc(8px + env(safe-area-inset-bottom));border-top:1px solid var(--line);z-index:15}
 body.has-addbar{padding-bottom:calc(138px + env(safe-area-inset-bottom))}
-.undobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+.undobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb) + 14px + env(safe-area-inset-bottom));
   width:min(412px,calc(100% - 28px));background:#33302a;color:#fff;border-radius:12px;
   display:none;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;z-index:20;font-size:14px}
-body.has-addbar .undobar{bottom:calc(146px + env(safe-area-inset-bottom))}
+body.has-addbar .undobar{bottom:calc(var(--kb) + 146px + env(safe-area-inset-bottom))}
 .undobar.show{display:flex}
+.barnotice{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--kb) + 146px + env(safe-area-inset-bottom));
+  width:min(412px,calc(100% - 28px));background:var(--accent-soft);color:var(--ink);border:1px solid var(--accent);
+  border-radius:12px;display:none;padding:10px 14px;z-index:19;font-size:14px}
+.barnotice.show{display:block}
+body.undo-on .barnotice{bottom:calc(var(--kb) + 214px + env(safe-area-inset-bottom))}
 .undobar button{background:#fff;color:#26221c;border:none;font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
 .card h3{margin:0 0 8px;font-size:15px}
@@ -93,6 +99,8 @@ dialog .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
 
 <div id="notice" class="notice" role="status" aria-live="polite"></div>
 <main id="app"></main>
+
+<div id="barnotice" class="barnotice" role="status" aria-live="polite"></div>
 
 <div id="undobar" class="undobar">
   <span id="undotext"></span>
@@ -204,6 +212,14 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7
 const norm = s => (s||"").trim().replace(/\s+/g," ");
 const esc = s => (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function notice(msg){ $notice.textContent = msg || ""; if (msg) setTimeout(()=>{ if ($notice.textContent === msg) $notice.textContent=""; }, 6000); }
+let barNoticeTimer = null;
+function barNotice(msg){
+  const el = document.getElementById("barnotice");
+  el.textContent = msg || "";
+  el.classList.add("show");
+  clearTimeout(barNoticeTimer);
+  barNoticeTimer = setTimeout(()=> el.classList.remove("show"), 6000);
+}
 function fmtDate(ts){
   const d = new Date(ts);
   return (d.getMonth()+1) + "月" + d.getDate() + "日";
@@ -260,17 +276,18 @@ function crossNotice(frame, name, tail){
   if (frame !== ANYWHERE && inAnywhere) return "「どこでも」にも「" + name + "」があります（" + tail + "）";
   return "";
 }
-function addItem(frame, name, memo){
+function addItem(frame, name, memo, viaBar){
   name = norm(name); memo = (memo||"").trim();
   if (!name) return;
   const dup = data.items.find(i => i.frame === frame && i.name === name);
-  if (dup){ notice("「" + name + "」はもうリストにあります。メモを編集できます。"); openEditor(dup.id); return; }
+  if (dup){ openEditor(dup.id, "「" + name + "」はもうリストにあります。メモを編集できます。"); return; }
   data.items.push({ id: uid(), frame, name, memo });
   ensureOrder(frame, name);
   if (view === "main") focusFrame = frame;
   save(); render();
   const c = crossNotice(frame, name);
-  notice(c || "「" + name + "」を追加しました");
+  const msg = c || "「" + name + "」を追加しました";
+  if (viaBar) barNotice(msg); else notice(msg);
 }
 function checkItem(id){
   const idx = data.items.findIndex(i => i.id === id);
@@ -310,10 +327,11 @@ function showUndo(h){
   const bar = document.getElementById("undobar");
   document.getElementById("undotext").textContent = "「" + h.name + "」を買ったものへ移しました";
   const btn = document.getElementById("undobtn");
-  btn.onclick = () => { bar.classList.remove("show"); restoreHistory(h.id); };
+  btn.onclick = () => { bar.classList.remove("show"); document.body.classList.remove("undo-on"); restoreHistory(h.id); };
   bar.classList.add("show");
+  document.body.classList.add("undo-on");
   clearTimeout(undoTimer);
-  undoTimer = setTimeout(()=> bar.classList.remove("show"), 6000);
+  undoTimer = setTimeout(()=> { bar.classList.remove("show"); document.body.classList.remove("undo-on"); }, 6000);
 }
 /* ===== 描画：共通部品 ===== */
 function itemRow(it){
@@ -342,7 +360,7 @@ function addForm(frame, placeholder){
   f.innerHTML = '<div class="row"><input type="text" name="name" autocomplete="off" placeholder="' + esc(placeholder) + '" aria-label="品目名">' +
     '<button type="submit" class="primary">追加</button></div>' +
     '<input type="text" name="memo" class="memo" autocomplete="off" placeholder="メモ（任意：個数や条件）" aria-label="メモ">';
-  f.onsubmit = e => { e.preventDefault(); addItem(frame, f.elements.name.value, f.elements.memo.value); };
+  f.onsubmit = e => { e.preventDefault(); addItem(frame, f.elements.name.value, f.elements.memo.value, !!f.closest(".addbar")); };
   return f;
 }
 function frameSection(frame, title, withForm){
@@ -704,13 +722,13 @@ function renderSettings(){
 /* ===== 編集ダイアログ ===== */
 const dlg = document.getElementById("editor");
 let editingId = null;
-function openEditor(id){
+function openEditor(id, reason){
   const it = data.items.find(i => i.id === id);
   if (!it) return;
   editingId = id;
   document.getElementById("ed-name").value = it.name;
   document.getElementById("ed-memo").value = it.memo || "";
-  document.getElementById("ed-msg").textContent = "";
+  document.getElementById("ed-msg").textContent = reason || "";
   const sel = document.getElementById("ed-frame");
   sel.replaceChildren();
   [ANYWHERE, ...data.stores.map(s => s.id)].forEach(fr => {
@@ -719,6 +737,8 @@ function openEditor(id){
     sel.appendChild(o);
   });
   dlg.showModal();
+  const closeBtn = document.getElementById("ed-close");
+  if (closeBtn) closeBtn.focus({ preventScroll: true });
 }
 document.getElementById("ed-close").onclick = () => dlg.close();
 document.getElementById("ed-save").onclick = () => {
@@ -792,6 +812,27 @@ document.title = CONFIG.appName;
   h.textContent = "買い物メモ";
   if (CONFIG.badge){ const s = document.createElement("span"); s.className = "badge"; s.textContent = CONFIG.badge; h.appendChild(s); }
 })();
+/* キーボードの高さに常駐バーを追随させる（g1） */
+function syncKb(){
+  const vv = window.visualViewport;
+  let kb = 0;
+  if (vv) kb = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+  document.documentElement.style.setProperty("--kb", kb + "px");
+}
+if (window.visualViewport){
+  window.visualViewport.addEventListener("resize", syncKb);
+  window.visualViewport.addEventListener("scroll", syncKb);
+}
+syncKb();
+/* 常駐バーで入力中に、バーの外を指でなぞったらキーボードを閉じる（ろーさ決定） */
+document.addEventListener("touchmove", e => {
+  const ae = document.activeElement;
+  if (!ae) return;
+  const bar = document.querySelector(".addbar");
+  if (!bar || !bar.contains(ae)) return;
+  if (e.target && bar.contains(e.target)) return;
+  ae.blur();
+}, { passive: true });
 render();
 if (recoveredFromCorrupt) notice("保存データが壊れていたため、退避して空で起動しました。退避データは設定から書き出せます");
 </script>
