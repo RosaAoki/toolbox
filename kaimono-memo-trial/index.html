@@ -50,7 +50,7 @@ ul.list li{display:flex;align-items:stretch;gap:6px;background:var(--card);borde
 .item-name{font-size:17px;word-break:break-word}
 .item-memo{font-size:13px;color:var(--sub);word-break:break-word;margin-top:2px}
 .move-btns{display:flex;flex-direction:column;gap:4px;justify-content:center}
-.move-btns button{min-height:36px;min-width:44px;padding:2px 8px}
+.move-btns button{min-height:44px;min-width:44px;padding:2px 8px}
 .empty{color:var(--sub);font-size:14px;padding:8px 2px}
 form.add{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 form.add .row{display:flex;gap:6px}
@@ -58,6 +58,7 @@ form.add input[type="text"]{flex:1;min-height:44px;border:1px solid var(--line);
 form.add input.memo{font-size:14px}
 .addbar{position:sticky;bottom:0;background:var(--bg);padding:10px 0 calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
 .undobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+body.has-addbar .undobar{bottom:calc(128px + env(safe-area-inset-bottom))}
   width:min(412px,calc(100% - 28px));background:#33302a;color:#fff;border-radius:12px;
   display:none;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;z-index:20;font-size:14px}
 .undobar.show{display:flex}
@@ -80,7 +81,7 @@ dialog .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
 </head>
 <body>
 <header>
-  <h1>買い物メモ<span class="badge">試作</span></h1>
+  <h1 id="apptitle">買い物メモ<span class="badge">試作</span></h1>
   <nav class="main" aria-label="画面切り替え">
     <button type="button" data-view="main" aria-pressed="true">リスト</button>
     <button type="button" data-view="staples" aria-pressed="false">定番</button>
@@ -118,11 +119,11 @@ dialog .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
 
 <script>
 "use strict";
-/* ===== 設定（試作と本番で違うのは、この3つだけ） ===== */
+/* ===== 設定（試作と本番で違うのは、CONFIG の3点と、manifest とアイコンのファイルだけ） ===== */
 const CONFIG = {
   storageKey: "kaimono-memo-trial:v1",   // 保存キー
-  appName: "買い物メモ（試作）",          // アプリ名
-  manifestId: "kaimono-memo-trial"        // manifest の id（manifest.webmanifest 側と一致）
+  appName: "買い物メモ（試作）",          // アプリ名（タブやホーム画面の名前）
+  badge: "試作"                           // 見出しのバッジ（本番は "" ）
 };
 const APP_MARK = "kaimono-memo";
 const SCHEMA = 1;
@@ -141,24 +142,47 @@ function retreatKey(kind){
   while (localStorage.getItem(key) !== null){ key = base + "-" + (i++); }
   return key;
 }
+function isStr(x){ return typeof x === "string"; }
+function validateData(d){
+  if (!d || typeof d !== "object" || Array.isArray(d)) return false;
+  if (d.schemaVersion !== SCHEMA) return false;
+  if (!Array.isArray(d.stores) || !Array.isArray(d.items) || !Array.isArray(d.staples) || !Array.isArray(d.history)) return false;
+  if (!d.orderMemory || typeof d.orderMemory !== "object" || Array.isArray(d.orderMemory)) return false;
+  const storeIds = new Set();
+  for (const s of d.stores){ if (!s || !isStr(s.id) || !s.id || !isStr(s.name)) return false; storeIds.add(s.id); }
+  const frameOk = f => f === ANYWHERE || storeIds.has(f);
+  for (const i of d.items){ if (!i || !isStr(i.id) || !isStr(i.name) || !i.name || !frameOk(i.frame)) return false; if (i.memo !== undefined && !isStr(i.memo)) return false; }
+  for (const s of d.staples){ if (!s || !isStr(s.id) || !isStr(s.name) || !frameOk(s.frame)) return false; if (s.memo !== undefined && !isStr(s.memo)) return false; }
+  for (const h of d.history){
+    if (!h || !isStr(h.name) || typeof h.checkedAt !== "number") return false;
+    if (!h.frame || (h.frame.type !== "anywhere" && h.frame.type !== "store")) return false;
+    if (h.frame.type === "store" && !isStr(h.frame.id)) return false;
+    if (h.memo !== undefined && h.memo !== null && !isStr(h.memo)) return false;
+  }
+  for (const k of Object.keys(d.orderMemory)){ const a = d.orderMemory[k]; if (!Array.isArray(a) || !a.every(isStr)) return false; }
+  return true;
+}
+let recoveredFromCorrupt = false;
 function load(){
   let raw = null;
   try { raw = localStorage.getItem(CONFIG.storageKey); } catch(e){}
   if (!raw) return defaultData();
   try {
     const d = JSON.parse(raw);
-    if (!d || d.schemaVersion !== SCHEMA || !Array.isArray(d.stores) || !Array.isArray(d.items)) throw new Error("shape");
-    d.staples = d.staples || []; d.orderMemory = d.orderMemory || {};
-    d.history = d.history || []; d.meta = d.meta || { lastExportAt: null };
+    if (!validateData(d)) throw new Error("shape");
+    d.meta = (d.meta && typeof d.meta === "object") ? d.meta : { lastExportAt: null };
+    if (!("lastExportAt" in d.meta)) d.meta.lastExportAt = null;
     return d;
   } catch(e){
+    recoveredFromCorrupt = true;
     try { localStorage.setItem(retreatKey("corrupt"), raw); } catch(e2){}
     return defaultData();
   }
 }
 let data = load();
 function save(){
-  try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(data)); } catch(e){}
+  try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(data)); return true; }
+  catch(e){ notice("保存できませんでした。空き容量やブラウザの設定を確認してください"); return false; }
 }
 if (navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
 // 起動時：90日を過ぎた履歴を掃除
@@ -189,7 +213,6 @@ function frameLabel(frame){
   if (frame === ANYWHERE) return "どこでも";
   const s = storeById(frame); return s ? s.name : "（削除された店）";
 }
-function frameOfItem(it){ return it.frame; }
 
 /* ===== 並び（orderMemory が正） ===== */
 function orderArr(frame){ return data.orderMemory[frame] || (data.orderMemory[frame] = []); }
@@ -209,6 +232,7 @@ function moveInOrder(frame, name, dir){
   const neighbor = dir < 0 ? visible[vi-1] : visible[vi+1];
   if (neighbor === undefined) return;
   const a = orderArr(frame);
+  for (const n of visible){ if (!a.includes(n)) a.push(n); }
   a.splice(a.indexOf(name), 1);
   const ni = a.indexOf(neighbor);
   a.splice(dir < 0 ? ni : ni+1, 0, name);
@@ -220,13 +244,15 @@ let currentStore = data.stores.length ? data.stores[0].id : null;
 let reorderMode = false;
 let stapleFrame = ANYWHERE;
 let resetFrame = ANYWHERE;
+let focusFrame = null;
 
 /* ===== 品目の操作 ===== */
-function crossNotice(frame, name){
+function crossNotice(frame, name, tail){
+  tail = tail || "そのまま追加しました";
   const inAnywhere = data.items.some(i => i.frame === ANYWHERE && i.name === name);
   const inStore = data.items.some(i => i.frame !== ANYWHERE && i.name === name);
-  if (frame === ANYWHERE && inStore) return "店のリストにも「" + name + "」があります（そのまま追加しました）";
-  if (frame !== ANYWHERE && inAnywhere) return "「どこでも」にも「" + name + "」があります（そのまま追加しました）";
+  if (frame === ANYWHERE && inStore) return "店のリストにも「" + name + "」があります（" + tail + "）";
+  if (frame !== ANYWHERE && inAnywhere) return "「どこでも」にも「" + name + "」があります（" + tail + "）";
   return "";
 }
 function addItem(frame, name, memo){
@@ -236,6 +262,7 @@ function addItem(frame, name, memo){
   if (dup){ notice("「" + name + "」はもうリストにあります。メモを編集できます。"); openEditor(dup.id); return; }
   data.items.push({ id: uid(), frame, name, memo });
   ensureOrder(frame, name);
+  if (view === "main") focusFrame = frame;
   save(); render();
   const c = crossNotice(frame, name);
   notice(c || "「" + name + "」を追加しました");
@@ -306,14 +333,14 @@ function itemRow(it){
   return li;
 }
 function addForm(frame, placeholder){
-  const f = document.createElement("form"); f.className = "add";
+  const f = document.createElement("form"); f.className = "add"; f.dataset.frame = frame;
   f.innerHTML = '<div class="row"><input type="text" name="name" autocomplete="off" placeholder="' + esc(placeholder) + '" aria-label="品目名">' +
     '<button type="submit" class="primary">追加</button></div>' +
     '<input type="text" name="memo" class="memo" autocomplete="off" placeholder="メモ（任意：個数や条件）" aria-label="メモ">';
   f.onsubmit = e => { e.preventDefault(); addItem(frame, f.elements.name.value, f.elements.memo.value); };
   return f;
 }
-function frameSection(frame, title){
+function frameSection(frame, title, withForm){
   const sec = document.createElement("section"); sec.className = "frame";
   const h = document.createElement("h2"); h.textContent = title;
   sec.appendChild(h);
@@ -322,7 +349,7 @@ function frameSection(frame, title){
   const ul = document.createElement("ul"); ul.className = "list";
   items.forEach(it => ul.appendChild(itemRow(it)));
   sec.appendChild(ul);
-  sec.appendChild(addForm(frame, frame === ANYWHERE ? "どこでも買える品目" : "品目名"));
+  if (withForm !== false) sec.appendChild(addForm(frame, frame === ANYWHERE ? "どこでも買える品目" : "品目名"));
   return sec;
 }
 
@@ -349,8 +376,13 @@ function renderMain(){
   tools.appendChild(rt);
   wrap.appendChild(tools);
 
+  let hasBar = false;
   if (currentStore && storeById(currentStore)){
-    wrap.appendChild(frameSection(currentStore, storeById(currentStore).name));
+    wrap.appendChild(frameSection(currentStore, storeById(currentStore).name, false));
+    const bar = document.createElement("div"); bar.className = "addbar";
+    bar.appendChild(addForm(currentStore, "品目名"));
+    wrap.appendChild(bar);
+    hasBar = true;
   } else if (!data.stores.length){
     const p = document.createElement("p"); p.className = "empty";
     p.textContent = "店はまだありません。「店の管理」から追加できます。下の「どこでも」は今すぐ使えます。";
@@ -358,6 +390,12 @@ function renderMain(){
   }
   wrap.appendChild(frameSection(ANYWHERE, "どこでも"));
   $app.replaceChildren(wrap);
+  document.body.classList.toggle("has-addbar", hasBar);
+  if (focusFrame){
+    const inp = $app.querySelector('form.add[data-frame="' + focusFrame + '"] input[name="name"]');
+    focusFrame = null;
+    if (inp) inp.focus({ preventScroll: true });
+  }
 }
 
 /* ===== 描画：店の管理 ===== */
@@ -434,9 +472,17 @@ function renderStaples(){
     const add = document.createElement("button"); add.type="button"; add.textContent = already ? "追加済み" : "リストへ追加";
     add.disabled = already;
     add.onclick = () => addItem(stapleFrame, st.name, st.memo);
+    const edit = document.createElement("button"); edit.type="button"; edit.textContent="編集";
+    edit.onclick = () => {
+      const name = norm(prompt("定番の名前", st.name) || "");
+      if (!name) return;
+      if (data.staples.some(s => s.id !== st.id && s.frame === st.frame && s.name === name)){ notice("その定番はもうあります"); return; }
+      const memo = (prompt("既定のメモ（任意）", st.memo || "") || "").trim();
+      st.name = name; st.memo = memo; save(); render(); notice("定番を編集しました");
+    };
     const del = document.createElement("button"); del.type="button"; del.textContent="消す"; del.className="danger";
     del.onclick = () => { data.staples = data.staples.filter(x => x.id !== st.id); save(); render(); };
-    row.append(add, del); wrap.appendChild(row);
+    row.append(add, edit, del); wrap.appendChild(row);
   });
   const card = document.createElement("div"); card.className="card";
   card.innerHTML = "<h3>定番を追加</h3>";
@@ -498,12 +544,24 @@ function download(filename, text){
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=> URL.revokeObjectURL(a.href), 4000);
 }
-function exportJSON(){
+async function exportJSON(){
   const now = new Date(), p = n => String(n).padStart(2,"0");
   const payload = { app: APP_MARK, schemaVersion: SCHEMA, exportedAt: now.toISOString(), data };
-  download("kaimono-memo-backup-" + now.getFullYear() + p(now.getMonth()+1) + p(now.getDate()) + ".json", JSON.stringify(payload, null, 2));
+  const text = JSON.stringify(payload, null, 2);
+  const fname = "kaimono-memo-backup-" + now.getFullYear() + p(now.getMonth()+1) + p(now.getDate()) + ".json";
+  let handed = false;
+  try {
+    const file = new File([text], fname, { type: "application/json" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file] });
+      handed = true;
+    }
+  } catch(e){
+    if (e && e.name === "AbortError"){ notice("書き出しをやめました"); return; }
+  }
+  if (!handed){ download(fname, text); handed = true; }
   data.meta.lastExportAt = now.getTime(); save();
-  notice("書き出しました。iPhoneの「ファイル」に保存しておいてください");
+  notice("書き出しました。iCloud Drive の専用フォルダに保存しておいてください");
   render();
 }
 let pendingImport = null;
@@ -514,7 +572,7 @@ function handleImportFile(file){
     if (!obj || obj.app !== APP_MARK || !obj.data){ notice("読み込めませんでした：買い物メモのファイルではないようです"); return; }
     if (typeof obj.schemaVersion !== "number" || obj.schemaVersion > SCHEMA){ notice("読み込めませんでした：ファイルの形式がこのアプリより新しい版です"); return; }
     const d = obj.data;
-    if (!Array.isArray(d.stores) || !Array.isArray(d.items) || !Array.isArray(d.history)){ notice("読み込めませんでした：中身の形が合いません"); return; }
+    if (!validateData(d)){ notice("読み込めませんでした：中身の形が合いません"); return; }
     pendingImport = { obj, text };
     render();
     notice("読み込みの確認を表示しました");
@@ -523,7 +581,10 @@ function handleImportFile(file){
 function doImport(){
   if (!pendingImport) return;
   const raw = localStorage.getItem(CONFIG.storageKey);
-  if (raw !== null){ try { localStorage.setItem(CONFIG.storageKey + ":before-import", raw); localStorage.setItem(CONFIG.storageKey + ":import-undo", "1"); } catch(e){} }
+  if (raw !== null){
+    try { localStorage.setItem(CONFIG.storageKey + ":before-import", raw); localStorage.setItem(CONFIG.storageKey + ":import-undo", "1"); }
+    catch(e){ notice("読み込み前の退避ができなかったため、読み込みをやめました"); return; }
+  }
   const d = pendingImport.obj.data;
   data = Object.assign(defaultData(), d);
   data.schemaVersion = SCHEMA;
@@ -628,7 +689,7 @@ function renderSettings(){
   c5.appendChild(hc); wrap.appendChild(c5);
 
   const c6 = document.createElement("div"); c6.className = "card";
-  c6.innerHTML = "<h3>使い方の注意</h3><p>先にホーム画面へ追加し、必ずアイコンから開いて使ってください。Safari で入力したデータは引き継がれません。アイコンを消す前に、JSON を書き出しておいてください。圏外では、開いたままの間は使えますが、開き直すときに開けない場合があります。</p>";
+  c6.innerHTML = "<h3>使い方の注意</h3><p>先にホーム画面へ追加し、必ずアイコンから開いて使ってください。Safari で入力したデータは引き継がれません。ホーム画面のアイコンは1つだけにしてください（複数あると、保存先が分かれることがあります）。アイコンを消す前に、JSON を書き出しておいてください。圏外では、開いたままの間は使えますが、開き直すときに開けない場合があります。</p>";
   wrap.appendChild(c6);
 
   $app.replaceChildren(wrap);
@@ -680,8 +741,8 @@ document.getElementById("ed-save").onclick = () => {
   }
   it.name = name; it.memo = memo; it.frame = target;
   save(); dlg.close(); render();
-  const c = (target !== oldFrame || name !== oldName) ? "" : "";
-  notice("保存しました");
+  const cross = (target !== oldFrame) ? crossNotice(target, name, "そのまま移動しました") : "";
+  notice(cross || "保存しました");
 };
 document.getElementById("ed-delete").onclick = () => {
   data.items = data.items.filter(i => i.id !== editingId);
@@ -714,7 +775,14 @@ function render(){
   else if (view === "settings") renderSettings();
 }
 function renderMainOrStores(){ if (view === "stores") renderStores(); else renderMain(); }
+document.title = CONFIG.appName;
+(function(){
+  const h = document.getElementById("apptitle");
+  h.textContent = "買い物メモ";
+  if (CONFIG.badge){ const s = document.createElement("span"); s.className = "badge"; s.textContent = CONFIG.badge; h.appendChild(s); }
+})();
 render();
+if (recoveredFromCorrupt) notice("保存データが壊れていたため、退避して空で起動しました。退避データは設定から書き出せます");
 </script>
 </body>
 </html>
