@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>買い物メモ（試作）</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="買い物メモ試作">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{
+  --accent:#b7791f; --accent-soft:#f7ecd4; --ink:#26221c; --sub:#7a7264;
+  --line:#e5ddcb; --bg:#fffdf7; --card:#ffffff; --danger:#b3382e;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0 auto;max-width:440px;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  padding:0 14px calc(20px + env(safe-area-inset-bottom));}
+button,input,select,textarea{font:inherit;color:inherit}
+button{min-height:44px;min-width:44px;border:1px solid var(--line);background:var(--card);
+  border-radius:10px;padding:8px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.ghost{border-color:transparent;background:transparent}
+button.danger{color:var(--danger)}
+button:disabled{opacity:.45}
+:focus{outline:none}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+header{position:sticky;top:0;background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) 0 8px;z-index:5}
+h1{font-size:19px;margin:0 0 8px}
+h1 .badge{font-size:11px;background:var(--accent);color:#fff;border-radius:6px;padding:2px 6px;vertical-align:3px;margin-left:6px}
+nav.main{display:flex;gap:6px;flex-wrap:wrap}
+nav.main button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);font-weight:600}
+.tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0 4px;-webkit-overflow-scrolling:touch}
+.tabs button{white-space:nowrap;border-radius:999px}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.notice{background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px}
+.notice:empty{display:none}
+section.frame{margin-top:14px}
+section.frame h2{font-size:15px;margin:0 0 6px;color:var(--sub);display:flex;justify-content:space-between;align-items:center}
+ul.list{list-style:none;margin:0;padding:0}
+ul.list li{display:flex;align-items:stretch;gap:6px;background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:6px 8px 6px 4px;margin-bottom:8px}
+.check{flex:0 0 48px;display:flex;align-items:center;justify-content:center}
+.check input{width:28px;height:28px;accent-color:var(--accent)}
+.item-main{flex:1;min-width:0;text-align:left;border:none;background:none;padding:6px 4px;min-height:44px}
+.item-name{font-size:17px;word-break:break-word}
+.item-memo{font-size:13px;color:var(--sub);word-break:break-word;margin-top:2px}
+.move-btns{display:flex;flex-direction:column;gap:4px;justify-content:center}
+.move-btns button{min-height:36px;min-width:44px;padding:2px 8px}
+.empty{color:var(--sub);font-size:14px;padding:8px 2px}
+form.add{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+form.add .row{display:flex;gap:6px}
+form.add input[type="text"]{flex:1;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);min-width:0}
+form.add input.memo{font-size:14px}
+.addbar{position:sticky;bottom:0;background:var(--bg);padding:10px 0 calc(6px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.undobar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+  width:min(412px,calc(100% - 28px));background:#33302a;color:#fff;border-radius:12px;
+  display:none;align-items:center;justify-content:space-between;padding:8px 8px 8px 14px;z-index:20;font-size:14px}
+.undobar.show{display:flex}
+.undobar button{background:#fff;color:#26221c;border:none;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0}
+.card h3{margin:0 0 8px;font-size:15px}
+.card p{font-size:14px;line-height:1.6}
+.small{font-size:12px;color:var(--sub)}
+.hist-date{font-size:13px;color:var(--sub);margin:14px 0 6px;font-weight:600}
+.hist-item{display:flex;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px}
+.hist-item .grow{flex:1;min-width:0}
+dialog{border:1px solid var(--line);border-radius:14px;padding:16px;width:min(400px,calc(100% - 32px))}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+dialog input[type="text"],dialog select{width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+dialog .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.kv{font-size:14px;line-height:1.9}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>買い物メモ<span class="badge">試作</span></h1>
+  <nav class="main" aria-label="画面切り替え">
+    <button type="button" data-view="main" aria-pressed="true">リスト</button>
+    <button type="button" data-view="staples" aria-pressed="false">定番</button>
+    <button type="button" data-view="history" aria-pressed="false">買ったもの</button>
+    <button type="button" data-view="settings" aria-pressed="false">設定</button>
+  </nav>
+</header>
+
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<main id="app"></main>
+
+<div id="undobar" class="undobar">
+  <span id="undotext"></span>
+  <button type="button" id="undobtn">戻す</button>
+</div>
+
+<dialog id="editor">
+  <form method="dialog" id="editor-form">
+    <h3 style="margin:0">品目を編集</h3>
+    <label for="ed-name">名前</label>
+    <input type="text" id="ed-name" autocomplete="off">
+    <label for="ed-memo">メモ（個数や条件など）</label>
+    <input type="text" id="ed-memo" autocomplete="off">
+    <label for="ed-frame">置き場所</label>
+    <select id="ed-frame"></select>
+    <div class="row">
+      <button type="button" id="ed-save" class="primary">保存</button>
+      <button type="button" id="ed-staple">定番に入れる</button>
+      <button type="button" id="ed-delete" class="danger">削除</button>
+      <button type="button" id="ed-close" class="ghost">閉じる</button>
+    </div>
+    <p class="small" id="ed-msg" role="status"></p>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+/* ===== 設定（試作と本番で違うのは、この3つだけ） ===== */
+const CONFIG = {
+  storageKey: "kaimono-memo-trial:v1",   // 保存キー
+  appName: "買い物メモ（試作）",          // アプリ名
+  manifestId: "kaimono-memo-trial"        // manifest の id（manifest.webmanifest 側と一致）
+};
+const APP_MARK = "kaimono-memo";
+const SCHEMA = 1;
+const ANYWHERE = "anywhere";
+const DAY = 86400000;
+
+/* ===== データ ===== */
+function defaultData(){
+  return { schemaVersion: SCHEMA, stores: [], items: [], staples: [],
+           orderMemory: {}, history: [], meta: { lastExportAt: null } };
+}
+function retreatKey(kind){
+  const d = new Date(), p = n => String(n).padStart(2,"0");
+  let base = CONFIG.storageKey + ":" + kind + "-" + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+  let key = base, i = 2;
+  while (localStorage.getItem(key) !== null){ key = base + "-" + (i++); }
+  return key;
+}
+function load(){
+  let raw = null;
+  try { raw = localStorage.getItem(CONFIG.storageKey); } catch(e){}
+  if (!raw) return defaultData();
+  try {
+    const d = JSON.parse(raw);
+    if (!d || d.schemaVersion !== SCHEMA || !Array.isArray(d.stores) || !Array.isArray(d.items)) throw new Error("shape");
+    d.staples = d.staples || []; d.orderMemory = d.orderMemory || {};
+    d.history = d.history || []; d.meta = d.meta || { lastExportAt: null };
+    return d;
+  } catch(e){
+    try { localStorage.setItem(retreatKey("corrupt"), raw); } catch(e2){}
+    return defaultData();
+  }
+}
+let data = load();
+function save(){
+  try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(data)); } catch(e){}
+}
+if (navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
+// 起動時：90日を過ぎた履歴を掃除
+(function cleanup(){
+  const before = data.history.length, cut = Date.now() - 90*DAY;
+  data.history = data.history.filter(h => h.checkedAt > cut);
+  if (data.history.length !== before) save();
+})();
+
+/* ===== 小物 ===== */
+const $app = document.getElementById("app");
+const $notice = document.getElementById("notice");
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const norm = s => (s||"").trim().replace(/\s+/g," ");
+const esc = s => (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function notice(msg){ $notice.textContent = msg || ""; if (msg) setTimeout(()=>{ if ($notice.textContent === msg) $notice.textContent=""; }, 6000); }
+function fmtDate(ts){
+  const d = new Date(ts);
+  return (d.getMonth()+1) + "月" + d.getDate() + "日";
+}
+function daysAgo(ts){
+  const a = new Date(); a.setHours(0,0,0,0);
+  const b = new Date(ts); b.setHours(0,0,0,0);
+  return Math.round((a - b) / DAY);
+}
+function storeById(id){ return data.stores.find(s => s.id === id) || null; }
+function frameLabel(frame){
+  if (frame === ANYWHERE) return "どこでも";
+  const s = storeById(frame); return s ? s.name : "（削除された店）";
+}
+function frameOfItem(it){ return it.frame; }
+
+/* ===== 並び（orderMemory が正） ===== */
+function orderArr(frame){ return data.orderMemory[frame] || (data.orderMemory[frame] = []); }
+function ensureOrder(frame, name){ const a = orderArr(frame); if (!a.includes(name)) a.push(name); }
+function orderedItems(frame){
+  const inFrame = data.items.filter(i => i.frame === frame);
+  const byName = new Map(inFrame.map(i => [i.name, i]));
+  const out = [];
+  for (const n of orderArr(frame)){ if (byName.has(n)){ out.push(byName.get(n)); byName.delete(n); } }
+  for (const i of byName.values()) out.push(i);
+  return out;
+}
+function moveInOrder(frame, name, dir){
+  const visible = orderedItems(frame).map(i => i.name);
+  const vi = visible.indexOf(name);
+  if (vi < 0) return;
+  const neighbor = dir < 0 ? visible[vi-1] : visible[vi+1];
+  if (neighbor === undefined) return;
+  const a = orderArr(frame);
+  a.splice(a.indexOf(name), 1);
+  const ni = a.indexOf(neighbor);
+  a.splice(dir < 0 ? ni : ni+1, 0, name);
+}
+
+/* ===== 状態 ===== */
+let view = "main";
+let currentStore = data.stores.length ? data.stores[0].id : null;
+let reorderMode = false;
+let stapleFrame = ANYWHERE;
+let resetFrame = ANYWHERE;
+
+/* ===== 品目の操作 ===== */
+function crossNotice(frame, name){
+  const inAnywhere = data.items.some(i => i.frame === ANYWHERE && i.name === name);
+  const inStore = data.items.some(i => i.frame !== ANYWHERE && i.name === name);
+  if (frame === ANYWHERE && inStore) return "店のリストにも「" + name + "」があります（そのまま追加しました）";
+  if (frame !== ANYWHERE && inAnywhere) return "「どこでも」にも「" + name + "」があります（そのまま追加しました）";
+  return "";
+}
+function addItem(frame, name, memo){
+  name = norm(name); memo = (memo||"").trim();
+  if (!name) return;
+  const dup = data.items.find(i => i.frame === frame && i.name === name);
+  if (dup){ notice("「" + name + "」はもうリストにあります。メモを編集できます。"); openEditor(dup.id); return; }
+  data.items.push({ id: uid(), frame, name, memo });
+  ensureOrder(frame, name);
+  save(); render();
+  const c = crossNotice(frame, name);
+  notice(c || "「" + name + "」を追加しました");
+}
+function checkItem(id){
+  const idx = data.items.findIndex(i => i.id === id);
+  if (idx < 0) return;
+  const it = data.items[idx];
+  data.items.splice(idx, 1);
+  let frameSnap, bought = null;
+  if (it.frame === ANYWHERE){
+    frameSnap = { type: "anywhere" };
+    if (currentStore && storeById(currentStore)){ const s = storeById(currentStore); bought = { id: s.id, name: s.name }; }
+  } else {
+    const s = storeById(it.frame);
+    frameSnap = { type: "store", id: it.frame, name: s ? s.name : "" };
+    bought = s ? { id: s.id, name: s.name } : null;
+  }
+  const h = { id: uid(), name: it.name, memo: it.memo, frame: frameSnap, boughtStore: bought, checkedAt: Date.now() };
+  data.history.unshift(h);
+  save(); render();
+  showUndo(h);
+}
+function restoreHistory(hid){
+  const idx = data.history.findIndex(h => h.id === hid);
+  if (idx < 0) return;
+  const h = data.history[idx];
+  let target = ANYWHERE;
+  if (h.frame.type === "store" && storeById(h.frame.id)) target = h.frame.id;
+  data.history.splice(idx, 1);
+  if (!data.items.some(i => i.frame === target && i.name === h.name)){
+    data.items.push({ id: uid(), frame: target, name: h.name, memo: h.memo });
+    ensureOrder(target, h.name);
+  }
+  save(); render();
+  notice("「" + h.name + "」を" + (target === ANYWHERE ? "「どこでも」" : "「" + frameLabel(target) + "」") + "に戻しました");
+}
+let undoTimer = null;
+function showUndo(h){
+  const bar = document.getElementById("undobar");
+  document.getElementById("undotext").textContent = "「" + h.name + "」を買ったものへ移しました";
+  const btn = document.getElementById("undobtn");
+  btn.onclick = () => { bar.classList.remove("show"); restoreHistory(h.id); };
+  bar.classList.add("show");
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(()=> bar.classList.remove("show"), 6000);
+}
+/* ===== 描画：共通部品 ===== */
+function itemRow(it){
+  const li = document.createElement("li");
+  if (reorderMode){
+    const mv = document.createElement("div"); mv.className = "move-btns";
+    const up = document.createElement("button"); up.type="button"; up.textContent="↑"; up.setAttribute("aria-label","上へ");
+    up.onclick = () => { moveInOrder(it.frame, it.name, -1); save(); render(); };
+    const dn = document.createElement("button"); dn.type="button"; dn.textContent="↓"; dn.setAttribute("aria-label","下へ");
+    dn.onclick = () => { moveInOrder(it.frame, it.name, 1); save(); render(); };
+    mv.append(up, dn); li.appendChild(mv);
+  } else {
+    const lab = document.createElement("label"); lab.className = "check";
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.setAttribute("aria-label", it.name + "を買った");
+    cb.onchange = () => checkItem(it.id);
+    lab.appendChild(cb); li.appendChild(lab);
+  }
+  const main = document.createElement("button"); main.type="button"; main.className="item-main";
+  main.innerHTML = '<span class="item-name">' + esc(it.name) + "</span>" + (it.memo ? '<span class="item-memo" style="display:block">' + esc(it.memo) + "</span>" : "");
+  main.onclick = () => openEditor(it.id);
+  li.appendChild(main);
+  return li;
+}
+function addForm(frame, placeholder){
+  const f = document.createElement("form"); f.className = "add";
+  f.innerHTML = '<div class="row"><input type="text" name="name" autocomplete="off" placeholder="' + esc(placeholder) + '" aria-label="品目名">' +
+    '<button type="submit" class="primary">追加</button></div>' +
+    '<input type="text" name="memo" class="memo" autocomplete="off" placeholder="メモ（任意：個数や条件）" aria-label="メモ">';
+  f.onsubmit = e => { e.preventDefault(); addItem(frame, f.elements.name.value, f.elements.memo.value); };
+  return f;
+}
+function frameSection(frame, title){
+  const sec = document.createElement("section"); sec.className = "frame";
+  const h = document.createElement("h2"); h.textContent = title;
+  sec.appendChild(h);
+  const items = orderedItems(frame);
+  if (!items.length){ const p = document.createElement("p"); p.className="empty"; p.textContent = "（まだありません）"; sec.appendChild(p); }
+  const ul = document.createElement("ul"); ul.className = "list";
+  items.forEach(it => ul.appendChild(itemRow(it)));
+  sec.appendChild(ul);
+  sec.appendChild(addForm(frame, frame === ANYWHERE ? "どこでも買える品目" : "品目名"));
+  return sec;
+}
+
+/* ===== 描画：リスト画面 ===== */
+function renderMain(){
+  const wrap = document.createElement("div");
+  const tabs = document.createElement("div"); tabs.className = "tabs";
+  data.stores.forEach(s => {
+    const b = document.createElement("button"); b.type="button"; b.textContent = s.name;
+    b.setAttribute("aria-pressed", s.id === currentStore ? "true" : "false");
+    b.onclick = () => { currentStore = s.id; render(); };
+    tabs.appendChild(b);
+  });
+  const mg = document.createElement("button"); mg.type="button"; mg.textContent = "店の管理";
+  mg.onclick = () => { view = "stores"; syncNav(); render(); };
+  tabs.appendChild(mg);
+  wrap.appendChild(tabs);
+
+  const tools = document.createElement("div"); tools.style.margin = "6px 0";
+  const rt = document.createElement("button"); rt.type="button";
+  rt.textContent = reorderMode ? "並べ替えを終わる" : "並べ替える";
+  rt.setAttribute("aria-pressed", reorderMode ? "true" : "false");
+  rt.onclick = () => { reorderMode = !reorderMode; render(); };
+  tools.appendChild(rt);
+  wrap.appendChild(tools);
+
+  if (currentStore && storeById(currentStore)){
+    wrap.appendChild(frameSection(currentStore, storeById(currentStore).name));
+  } else if (!data.stores.length){
+    const p = document.createElement("p"); p.className = "empty";
+    p.textContent = "店はまだありません。「店の管理」から追加できます。下の「どこでも」は今すぐ使えます。";
+    wrap.appendChild(p);
+  }
+  wrap.appendChild(frameSection(ANYWHERE, "どこでも"));
+  $app.replaceChildren(wrap);
+}
+
+/* ===== 描画：店の管理 ===== */
+function renderStores(){
+  const wrap = document.createElement("div");
+  const back = document.createElement("button"); back.type="button"; back.textContent = "← リストへ戻る";
+  back.onclick = () => { view = "main"; syncNav(); render(); };
+  wrap.appendChild(back);
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML = "<h3>店を追加</h3>";
+  const f = document.createElement("form"); f.className = "add";
+  f.innerHTML = '<div class="row"><input type="text" name="name" autocomplete="off" placeholder="店名" aria-label="店名"><button type="submit" class="primary">追加</button></div>';
+  f.onsubmit = e => {
+    e.preventDefault();
+    const name = norm(f.elements.name.value);
+    if (!name) return;
+    if (data.stores.some(s => norm(s.name) === name)){ notice("同じ名前の店があります"); return; }
+    const s = { id: uid(), name };
+    data.stores.push(s); if (!currentStore) currentStore = s.id;
+    save(); render(); notice("店「" + name + "」を追加しました");
+  };
+  card.appendChild(f); wrap.appendChild(card);
+
+  data.stores.forEach((s, i) => {
+    const c = document.createElement("div"); c.className = "card";
+    const title = document.createElement("h3"); title.textContent = s.name; c.appendChild(title);
+    const row = document.createElement("div"); row.style.display="flex"; row.style.gap="6px"; row.style.flexWrap="wrap";
+    const up = document.createElement("button"); up.type="button"; up.textContent="← 前へ"; up.disabled = i===0;
+    up.onclick = () => { data.stores.splice(i,1); data.stores.splice(i-1,0,s); save(); render(); };
+    const dn = document.createElement("button"); dn.type="button"; dn.textContent="次へ →"; dn.disabled = i===data.stores.length-1;
+    dn.onclick = () => { data.stores.splice(i,1); data.stores.splice(i+1,0,s); save(); render(); };
+    const ren = document.createElement("button"); ren.type="button"; ren.textContent="名前を変える";
+    ren.onclick = () => {
+      const name = norm(prompt("新しい店名", s.name) || "");
+      if (!name || name === s.name) return;
+      if (data.stores.some(x => x.id !== s.id && norm(x.name) === name)){ notice("同じ名前の店があります"); return; }
+      s.name = name; save(); render();
+    };
+    const del = document.createElement("button"); del.type="button"; del.textContent="この店を消す"; del.className="danger";
+    del.onclick = () => {
+      if (!confirm("店「" + s.name + "」を消します。その店のリスト・定番・並びの記憶も一緒に消えます（買ったものの履歴は残ります）。よろしいですか？")) return;
+      data.items = data.items.filter(x => x.frame !== s.id);
+      data.staples = data.staples.filter(x => x.frame !== s.id);
+      delete data.orderMemory[s.id];
+      data.stores = data.stores.filter(x => x.id !== s.id);
+      if (currentStore === s.id) currentStore = data.stores.length ? data.stores[0].id : null;
+      save(); render(); notice("店「" + s.name + "」を消しました");
+    };
+    row.append(up, dn, ren, del); c.appendChild(row); wrap.appendChild(c);
+  });
+  $app.replaceChildren(wrap);
+}
+
+/* ===== 描画：定番 ===== */
+function renderStaples(){
+  const wrap = document.createElement("div");
+  const sel = document.createElement("select");
+  sel.setAttribute("aria-label","定番を見る枠");
+  const frames = [ANYWHERE, ...data.stores.map(s => s.id)];
+  frames.forEach(fr => {
+    const o = document.createElement("option"); o.value = fr; o.textContent = frameLabel(fr);
+    if (fr === stapleFrame) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => { stapleFrame = sel.value; render(); };
+  wrap.appendChild(sel);
+  const list = data.staples.filter(s => s.frame === stapleFrame);
+  if (!list.length){ const p=document.createElement("p"); p.className="empty"; p.textContent="（定番はまだありません）"; wrap.appendChild(p); }
+  list.forEach(st => {
+    const row = document.createElement("div"); row.className = "hist-item";
+    const already = data.items.some(i => i.frame === stapleFrame && i.name === st.name);
+    row.innerHTML = '<div class="grow"><span class="item-name">' + esc(st.name) + "</span>" +
+      (st.memo ? '<span class="item-memo" style="display:block">' + esc(st.memo) + "</span>" : "") + "</div>";
+    const add = document.createElement("button"); add.type="button"; add.textContent = already ? "追加済み" : "リストへ追加";
+    add.disabled = already;
+    add.onclick = () => addItem(stapleFrame, st.name, st.memo);
+    const del = document.createElement("button"); del.type="button"; del.textContent="消す"; del.className="danger";
+    del.onclick = () => { data.staples = data.staples.filter(x => x.id !== st.id); save(); render(); };
+    row.append(add, del); wrap.appendChild(row);
+  });
+  const card = document.createElement("div"); card.className="card";
+  card.innerHTML = "<h3>定番を追加</h3>";
+  const f = document.createElement("form"); f.className="add";
+  f.innerHTML = '<div class="row"><input type="text" name="name" autocomplete="off" placeholder="品目名" aria-label="品目名"><button type="submit" class="primary">追加</button></div>' +
+    '<input type="text" name="memo" class="memo" autocomplete="off" placeholder="既定のメモ（任意）" aria-label="既定のメモ">';
+  f.onsubmit = e => {
+    e.preventDefault();
+    const name = norm(f.elements.name.value), memo = f.elements.memo.value.trim();
+    if (!name) return;
+    if (data.staples.some(s => s.frame === stapleFrame && s.name === name)){ notice("その定番はもうあります"); return; }
+    data.staples.push({ id: uid(), frame: stapleFrame, name, memo });
+    save(); render(); notice("定番に「" + name + "」を追加しました");
+  };
+  card.appendChild(f); wrap.appendChild(card);
+  const hint = document.createElement("p"); hint.className="small";
+  hint.textContent = "リストの品目の編集画面からも「定番に入れる」ができます。";
+  wrap.appendChild(hint);
+  $app.replaceChildren(wrap);
+}
+
+/* ===== 描画：履歴 ===== */
+function renderHistory(){
+  const wrap = document.createElement("div");
+  const note = document.createElement("p"); note.className="small";
+  note.textContent = "90日を過ぎた履歴は自動で消えます。";
+  wrap.appendChild(note);
+  if (!data.history.length){ const p=document.createElement("p"); p.className="empty"; p.textContent="（まだありません）"; wrap.appendChild(p); }
+  let lastDay = "";
+  data.history.forEach(h => {
+    const day = fmtDate(h.checkedAt);
+    if (day !== lastDay){
+      lastDay = day;
+      const hd = document.createElement("div"); hd.className = "hist-date";
+      hd.textContent = daysAgo(h.checkedAt) === 0 ? "今日買ったもの（" + day + "）" : day;
+      wrap.appendChild(hd);
+    }
+    const row = document.createElement("div"); row.className = "hist-item";
+    let where;
+    if (h.frame.type === "anywhere") where = "どこでも" + (h.boughtStore ? "（" + h.boughtStore.name + "で）" : "");
+    else where = h.frame.name || "";
+    row.innerHTML = '<div class="grow"><span class="item-name">' + esc(h.name) + "</span>" +
+      (h.memo ? '<span class="item-memo" style="display:block">' + esc(h.memo) + "</span>" : "") +
+      '<span class="small" style="display:block">' + esc(where) + "</span></div>";
+    const back = document.createElement("button"); back.type="button"; back.textContent="戻す";
+    back.onclick = () => restoreHistory(h.id);
+    const del = document.createElement("button"); del.type="button"; del.textContent="消す"; del.className="danger";
+    del.onclick = () => { data.history = data.history.filter(x => x.id !== h.id); save(); render(); };
+    row.append(back, del); wrap.appendChild(row);
+  });
+  $app.replaceChildren(wrap);
+}
+
+/* ===== 書き出し／読み込み ===== */
+function download(filename, text){
+  const blob = new Blob([text], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 4000);
+}
+function exportJSON(){
+  const now = new Date(), p = n => String(n).padStart(2,"0");
+  const payload = { app: APP_MARK, schemaVersion: SCHEMA, exportedAt: now.toISOString(), data };
+  download("kaimono-memo-backup-" + now.getFullYear() + p(now.getMonth()+1) + p(now.getDate()) + ".json", JSON.stringify(payload, null, 2));
+  data.meta.lastExportAt = now.getTime(); save();
+  notice("書き出しました。iPhoneの「ファイル」に保存しておいてください");
+  render();
+}
+let pendingImport = null;
+function handleImportFile(file){
+  file.text().then(text => {
+    let obj;
+    try { obj = JSON.parse(text); } catch(e){ notice("読み込めませんでした：ファイルが壊れているようです"); return; }
+    if (!obj || obj.app !== APP_MARK || !obj.data){ notice("読み込めませんでした：買い物メモのファイルではないようです"); return; }
+    if (typeof obj.schemaVersion !== "number" || obj.schemaVersion > SCHEMA){ notice("読み込めませんでした：ファイルの形式がこのアプリより新しい版です"); return; }
+    const d = obj.data;
+    if (!Array.isArray(d.stores) || !Array.isArray(d.items) || !Array.isArray(d.history)){ notice("読み込めませんでした：中身の形が合いません"); return; }
+    pendingImport = { obj, text };
+    render();
+    notice("読み込みの確認を表示しました");
+  }).catch(()=> notice("読み込めませんでした"));
+}
+function doImport(){
+  if (!pendingImport) return;
+  const raw = localStorage.getItem(CONFIG.storageKey);
+  if (raw !== null){ try { localStorage.setItem(CONFIG.storageKey + ":before-import", raw); localStorage.setItem(CONFIG.storageKey + ":import-undo", "1"); } catch(e){} }
+  const d = pendingImport.obj.data;
+  data = Object.assign(defaultData(), d);
+  data.schemaVersion = SCHEMA;
+  pendingImport = null;
+  currentStore = data.stores.length ? data.stores[0].id : null;
+  save(); render();
+  notice("読み込みました。設定から1回だけ取り消せます");
+}
+function undoImport(){
+  const raw = localStorage.getItem(CONFIG.storageKey + ":before-import");
+  if (raw === null) return;
+  try { data = JSON.parse(raw); } catch(e){ notice("取り消し用のデータが読めませんでした"); return; }
+  localStorage.removeItem(CONFIG.storageKey + ":before-import");
+  localStorage.removeItem(CONFIG.storageKey + ":import-undo");
+  currentStore = data.stores.length ? data.stores[0].id : null;
+  save(); render();
+  notice("読み込みを取り消しました");
+}
+function ownRetreatKeys(){
+  const prefix = CONFIG.storageKey + ":", out = [];
+  for (let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix) && k !== CONFIG.storageKey + ":import-undo") out.push(k);
+  }
+  return out.sort();
+}
+
+/* ===== 描画：設定 ===== */
+function renderSettings(){
+  const wrap = document.createElement("div");
+
+  const c1 = document.createElement("div"); c1.className = "card";
+  let last = "まだ書き出しはありません";
+  if (data.meta.lastExportAt){
+    const da = daysAgo(data.meta.lastExportAt);
+    last = "前回書き出し：" + fmtDate(data.meta.lastExportAt) + '<span class="small">（' + (da === 0 ? "今日" : da + "日前") + "）</span>";
+  }
+  c1.innerHTML = "<h3>書き出し（バックアップ）</h3><p>" + last + "</p>" +
+    "<p>書き出した JSON は、iPhone の「ファイル」（iCloud Drive）にためておく決まりです。必要なときに、まとめて Muse へ渡してください。</p>";
+  const ex = document.createElement("button"); ex.type="button"; ex.className="primary"; ex.textContent="JSONを書き出す";
+  ex.onclick = exportJSON;
+  c1.appendChild(ex); wrap.appendChild(c1);
+
+  const c2 = document.createElement("div"); c2.className = "card";
+  c2.innerHTML = "<h3>読み込み</h3><p>今のデータは、ファイルの中身に丸ごと置き換わります。実行の直前に今のデータが退避され、1回だけ取り消せます。</p>";
+  const file = document.createElement("input"); file.type = "file"; file.accept = ".json,application/json";
+  file.setAttribute("aria-label","読み込むファイル");
+  file.onchange = () => { if (file.files[0]) handleImportFile(file.files[0]); };
+  c2.appendChild(file);
+  if (pendingImport){
+    const d = pendingImport.obj.data;
+    const sum = document.createElement("p");
+    sum.innerHTML = "<strong>読み込むファイルの要約</strong><br>書き出し日時：" +
+      (pendingImport.obj.exportedAt ? fmtDate(Date.parse(pendingImport.obj.exportedAt)) : "不明") +
+      "<br>店：" + (d.stores||[]).length + "件／品目：" + (d.items||[]).length + "件／履歴：" + (d.history||[]).length + "件";
+    const go = document.createElement("button"); go.type="button"; go.className="primary"; go.textContent="この内容で置き換える";
+    go.onclick = doImport;
+    const no = document.createElement("button"); no.type="button"; no.textContent="やめる";
+    no.onclick = () => { pendingImport = null; render(); };
+    c2.append(sum, go, no);
+  }
+  if (localStorage.getItem(CONFIG.storageKey + ":import-undo") === "1"){
+    const un = document.createElement("div"); un.style.marginTop = "10px";
+    const ub = document.createElement("button"); ub.type="button"; ub.textContent="読み込みを取り消す（1回だけ）";
+    ub.onclick = undoImport;
+    un.appendChild(ub); c2.appendChild(un);
+  }
+  wrap.appendChild(c2);
+
+  const c3 = document.createElement("div"); c3.className = "card";
+  c3.innerHTML = "<h3>並びの記憶のリセット</h3><p>選んだ枠の並びの記憶を空にします（並びは追加順からやり直し）。</p>";
+  const sel = document.createElement("select"); sel.setAttribute("aria-label","リセットする枠");
+  [ANYWHERE, ...data.stores.map(s => s.id)].forEach(fr => {
+    const o = document.createElement("option"); o.value = fr; o.textContent = frameLabel(fr);
+    if (fr === resetFrame) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => { resetFrame = sel.value; };
+  const rb = document.createElement("button"); rb.type="button"; rb.textContent="この枠の記憶をリセット";
+  rb.onclick = () => { if (confirm("「" + frameLabel(resetFrame) + "」の並びの記憶をリセットしますか？")){ data.orderMemory[resetFrame] = []; save(); notice("リセットしました"); } };
+  c3.append(sel, rb); wrap.appendChild(c3);
+
+  const c4 = document.createElement("div"); c4.className = "card";
+  c4.innerHTML = "<h3>退避データ</h3><p>壊れたデータや、読み込み前のデータの退避です。書き出して確認したあとに消せます。</p>";
+  const keys = ownRetreatKeys();
+  if (!keys.length){ const p=document.createElement("p"); p.className="small"; p.textContent="（退避データはありません）"; c4.appendChild(p); }
+  keys.forEach(k => {
+    const row = document.createElement("div"); row.className = "hist-item";
+    row.innerHTML = '<div class="grow"><span class="small">' + esc(k.slice(CONFIG.storageKey.length + 1)) + "</span></div>";
+    const dl = document.createElement("button"); dl.type="button"; dl.textContent="書き出す";
+    dl.onclick = () => download(k.replace(/[:]/g,"_") + ".json", localStorage.getItem(k) || "");
+    const del = document.createElement("button"); del.type="button"; del.textContent="消す"; del.className="danger";
+    del.onclick = () => { if (confirm("この退避データを消しますか？")){ localStorage.removeItem(k); if (k.endsWith(":before-import")) localStorage.removeItem(CONFIG.storageKey + ":import-undo"); render(); } };
+    row.append(dl, del); c4.appendChild(row);
+  });
+  wrap.appendChild(c4);
+
+  const c5 = document.createElement("div"); c5.className = "card";
+  c5.innerHTML = "<h3>履歴</h3>";
+  const hc = document.createElement("button"); hc.type="button"; hc.className="danger"; hc.textContent="履歴を全部消す";
+  hc.onclick = () => { if (confirm("買ったものの履歴を全部消しますか？（元に戻せません）")){ data.history = []; save(); render(); notice("履歴を全部消しました"); } };
+  c5.appendChild(hc); wrap.appendChild(c5);
+
+  const c6 = document.createElement("div"); c6.className = "card";
+  c6.innerHTML = "<h3>使い方の注意</h3><p>先にホーム画面へ追加し、必ずアイコンから開いて使ってください。Safari で入力したデータは引き継がれません。アイコンを消す前に、JSON を書き出しておいてください。圏外では、開いたままの間は使えますが、開き直すときに開けない場合があります。</p>";
+  wrap.appendChild(c6);
+
+  $app.replaceChildren(wrap);
+}
+
+/* ===== 編集ダイアログ ===== */
+const dlg = document.getElementById("editor");
+let editingId = null;
+function openEditor(id){
+  const it = data.items.find(i => i.id === id);
+  if (!it) return;
+  editingId = id;
+  document.getElementById("ed-name").value = it.name;
+  document.getElementById("ed-memo").value = it.memo || "";
+  document.getElementById("ed-msg").textContent = "";
+  const sel = document.getElementById("ed-frame");
+  sel.replaceChildren();
+  [ANYWHERE, ...data.stores.map(s => s.id)].forEach(fr => {
+    const o = document.createElement("option"); o.value = fr; o.textContent = frameLabel(fr);
+    if (fr === it.frame) o.selected = true;
+    sel.appendChild(o);
+  });
+  dlg.showModal();
+}
+document.getElementById("ed-close").onclick = () => dlg.close();
+document.getElementById("ed-save").onclick = () => {
+  const it = data.items.find(i => i.id === editingId);
+  if (!it) { dlg.close(); return; }
+  const name = norm(document.getElementById("ed-name").value);
+  const memo = document.getElementById("ed-memo").value.trim();
+  const target = document.getElementById("ed-frame").value;
+  const msg = document.getElementById("ed-msg");
+  if (!name){ msg.textContent = "名前が空です"; return; }
+  if (data.items.some(i => i.id !== it.id && i.frame === target && i.name === name)){
+    msg.textContent = "「" + name + "」はもうリストにあります"; return;
+  }
+  const oldFrame = it.frame, oldName = it.name;
+  if (target === oldFrame && name !== oldName){
+    const a = orderArr(oldFrame), idx = a.indexOf(oldName);
+    if (idx >= 0){
+      if (a.includes(name)) a.splice(idx, 1); else a[idx] = name;
+    } else ensureOrder(oldFrame, name);
+  }
+  if (target !== oldFrame){
+    // 移動：元の枠の配列には名前を残し（記憶）、移動先の配列へ末尾に足す
+    ensureOrder(target, name);
+  } else if (name !== oldName){
+    // 上で処理済み
+  }
+  it.name = name; it.memo = memo; it.frame = target;
+  save(); dlg.close(); render();
+  const c = (target !== oldFrame || name !== oldName) ? "" : "";
+  notice("保存しました");
+};
+document.getElementById("ed-delete").onclick = () => {
+  data.items = data.items.filter(i => i.id !== editingId);
+  save(); dlg.close(); render(); notice("削除しました");
+};
+document.getElementById("ed-staple").onclick = () => {
+  const it = data.items.find(i => i.id === editingId);
+  if (!it) return;
+  if (data.staples.some(s => s.frame === it.frame && s.name === it.name)){
+    document.getElementById("ed-msg").textContent = "もう定番に入っています"; return;
+  }
+  data.staples.push({ id: uid(), frame: it.frame, name: it.name, memo: it.memo });
+  save();
+  document.getElementById("ed-msg").textContent = "定番に入れました";
+};
+
+/* ===== ナビと描画の入口 ===== */
+function syncNav(){
+  document.querySelectorAll("nav.main button").forEach(b => {
+    b.setAttribute("aria-pressed", b.dataset.view === view ? "true" : "false");
+  });
+}
+document.querySelectorAll("nav.main button").forEach(b => {
+  b.onclick = () => { view = b.dataset.view; syncNav(); render(); };
+});
+function render(){
+  if (view === "main" || view === "stores") renderMainOrStores();
+  else if (view === "staples") renderStaples();
+  else if (view === "history") renderHistory();
+  else if (view === "settings") renderSettings();
+}
+function renderMainOrStores(){ if (view === "stores") renderStores(); else renderMain(); }
+render();
+</script>
+</body>
+</html>
