@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>買い物メモ（試作）</title>
+<title>買い物メモ</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="買い物メモ試作">
+<meta name="apple-mobile-web-app-title" content="買い物メモ">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -88,7 +88,7 @@ dialog .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
 </head>
 <body>
 <header>
-  <h1 id="apptitle">買い物メモ<span class="badge">試作</span></h1>
+  <h1 id="apptitle">買い物メモ</h1>
   <nav class="main" aria-label="画面切り替え">
     <button type="button" data-view="main" aria-pressed="true">リスト</button>
     <button type="button" data-view="staples" aria-pressed="false">定番</button>
@@ -417,7 +417,7 @@ function renderMain(){
   if (focusFrame){
     const inp = $app.querySelector('form.add[data-frame="' + focusFrame + '"] input[name="name"]');
     focusFrame = null;
-    if (inp) inp.focus({ preventScroll: true });
+    if (inp){ inp.focus({ preventScroll: true }); syncKbSoon(); }
   }
 }
 
@@ -824,6 +824,10 @@ if (window.visualViewport){
   window.visualViewport.addEventListener("scroll", syncKb);
 }
 syncKb();
+/* キーボードの開閉が落ち着くまで、少し置いてから合わせ直す（p1） */
+function syncKbSoon(){ syncKb(); setTimeout(syncKb, 60); setTimeout(syncKb, 300); }
+document.addEventListener("focusin", syncKbSoon);
+document.addEventListener("focusout", syncKbSoon);
 /* 常駐バーで入力中に、バーの外を指でなぞったらキーボードを閉じる（ろーさ決定） */
 document.addEventListener("touchmove", e => {
   const ae = document.activeElement;
