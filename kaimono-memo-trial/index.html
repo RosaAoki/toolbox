@@ -854,7 +854,7 @@ syncKb();
 function syncKbSoon(){ syncKb(); setTimeout(syncKb, 60); setTimeout(syncKb, 300); }
 document.addEventListener("focusin", syncKbSoon);
 document.addEventListener("focusout", syncKbSoon);
-/* 常駐バーで入力中に、バーの外を指でなぞったらキーボードを閉じる（ろーさ決定） */
+/* 常駐バーで入力中に、バーの外を指でなぞったらキーボードを閉じる */
 document.addEventListener("touchmove", e => {
   const ae = document.activeElement;
   if (!ae) return;
